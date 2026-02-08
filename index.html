@@ -25,32 +25,79 @@
             width: 180px; min-height: 44px; padding: 10px 16px; font-size: 1.4rem;
             border: 2px solid #c4a574; border-radius: 12px; text-align: center;
             background: #fff; color: #4a3728; font-weight: bold; letter-spacing: 2px;
-            user-select: none;
+            user-select: none; cursor: pointer;
         }
+        .display-box.active { border-color: #8b6914; box-shadow: 0 0 0 3px rgba(139,105,20,0.2); }
+        .display-box .cursor-blink {
+            display: inline-block; width: 2px; height: 1.2em; background: #8b6914;
+            vertical-align: middle; margin-left: 2px;
+            animation: blink-cursor 1s step-end infinite;
+        }
+        @keyframes blink-cursor { 0%,100%{opacity:1} 50%{opacity:0} }
 
-        /* ====== 应用内键盘 ====== */
+        /* ====== 弹出式键盘 ====== */
+        .kb-overlay {
+            display: none; position: fixed; left: 0; right: 0; bottom: 0; top: 0;
+            z-index: 999;
+        }
+        .kb-overlay.open { display: block; }
+        .kb-bg {
+            position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+            background: rgba(0,0,0,0.15);
+        }
         .numpad {
+            position: absolute; left: 50%; bottom: 0;
+            transform: translateX(-50%);
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 8px;
-            width: 100%; max-width: 280px;
-            margin-top: 20px;
+            width: 100%; max-width: 340px;
+            padding: 16px 12px 24px;
+            background: #f5f0e8;
+            border-radius: 18px 18px 0 0;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+            animation: kb-slide-up 0.25s ease;
         }
+        @keyframes kb-slide-up { from { transform: translate(-50%, 100%); } to { transform: translate(-50%, 0); } }
         .nk {
-            padding: 14px 0; font-size: 1.3rem; font-weight: bold;
+            padding: 16px 0; font-size: 1.4rem; font-weight: bold;
             border: none; border-radius: 12px; cursor: pointer;
-            background: #f5f0e8; color: #4a3728;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: #fff; color: #4a3728;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
             transition: background 0.1s, transform 0.08s;
             user-select: none; -webkit-tap-highlight-color: transparent;
         }
         .nk:active { transform: scale(0.95); background: #e8dfd0; }
         .nk-op { background: #e8b86d; color: #5c4a3a; }
         .nk-op:active { background: #d4a050; }
-        .nk-del { background: #f0d0b0; color: #8b5a2b; font-size: 1.1rem; }
+        .nk-del { background: #f0d0b0; color: #8b5a2b; font-size: 1.2rem; }
         .nk-del:active { background: #e0c0a0; }
         .nk-clear { background: #e74c3c; color: #fff; }
         .nk-clear:active { background: #c0392b; }
+        .nk-done { background: #8b6914; color: #fff; grid-column: span 1; }
+        .nk-done:active { background: #6d5210; }
+
+        /* ====== 开机加载动画 ====== */
+        .loading-overlay {
+            position: fixed; left: 0; right: 0; top: 0; bottom: 0;
+            background: linear-gradient(135deg, #f5f0e8 0%, #e8dfd0 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s;
+        }
+        .loading-overlay.fade-out { opacity: 0; pointer-events: none; }
+        .loading-emoji { font-size: 3rem; animation: loading-bounce 1s ease infinite; }
+        @keyframes loading-bounce {
+            0%,100% { transform: translateY(0); }
+            50% { transform: translateY(-12px); }
+        }
+        .loading-text { margin-top: 16px; font-size: 1.1rem; color: #8b7355; }
+        .loading-dots::after {
+            content: ''; animation: dots 1.5s steps(3) infinite;
+        }
+        @keyframes dots {
+            0% { content: ''; } 33% { content: '.'; } 66% { content: '..'; } 100% { content: '...'; }
+        }
         .btn {
             padding: 12px 24px; font-size: 1rem; border: none; border-radius: 12px;
             background: #8b6914; color: #fff; cursor: pointer; font-weight: bold;
@@ -124,6 +171,12 @@
     </style>
 </head>
 <body>
+    <!-- 开机加载动画 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-emoji">🧮</div>
+        <div class="loading-text">服务器开机中，请稍等<span class="loading-dots"></span></div>
+    </div>
+
     <h1>🧮 小学算数机器人</h1>
     <p class="sub">100 以内加减，用算盘拨珠看过程</p>
 
@@ -138,24 +191,29 @@
     </div>
 
     <div class="explain" id="explain">
-        用下面的键盘输入算式，点「拨珠演示」开始！
+        点击上方输入框，输入算式，点「拨珠演示」开始！
     </div>
 
-    <div class="numpad" id="numpad">
-        <button class="nk" data-val="1">1</button>
-        <button class="nk" data-val="2">2</button>
-        <button class="nk" data-val="3">3</button>
-        <button class="nk" data-val="4">4</button>
-        <button class="nk" data-val="5">5</button>
-        <button class="nk" data-val="6">6</button>
-        <button class="nk" data-val="7">7</button>
-        <button class="nk" data-val="8">8</button>
-        <button class="nk" data-val="9">9</button>
-        <button class="nk nk-op" data-val="+">+</button>
-        <button class="nk" data-val="0">0</button>
-        <button class="nk nk-op" data-val="-">&minus;</button>
-        <button class="nk nk-del" data-val="del">&#9003;</button>
-        <button class="nk nk-clear" data-val="clear">C</button>
+    <!-- 弹出式键盘（点输入框才出现） -->
+    <div class="kb-overlay" id="kbOverlay">
+        <div class="kb-bg" id="kbBg"></div>
+        <div class="numpad" id="numpad">
+            <button class="nk" data-val="1">1</button>
+            <button class="nk" data-val="2">2</button>
+            <button class="nk" data-val="3">3</button>
+            <button class="nk" data-val="4">4</button>
+            <button class="nk" data-val="5">5</button>
+            <button class="nk" data-val="6">6</button>
+            <button class="nk" data-val="7">7</button>
+            <button class="nk" data-val="8">8</button>
+            <button class="nk" data-val="9">9</button>
+            <button class="nk nk-op" data-val="+">+</button>
+            <button class="nk" data-val="0">0</button>
+            <button class="nk nk-op" data-val="-">&minus;</button>
+            <button class="nk nk-del" data-val="del">&#9003;</button>
+            <button class="nk nk-done" data-val="done">完成</button>
+            <button class="nk nk-clear" data-val="clear">C</button>
+        </div>
     </div>
 
 <script>
@@ -534,30 +592,71 @@ window.addEventListener('resize', function() {
 
 document.getElementById('go').addEventListener('click', runDemo);
 
-// ====== 应用内键盘逻辑 ======
+// ====== 开机加载：页面就绪后淡出 ======
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        var overlay = document.getElementById('loadingOverlay');
+        overlay.classList.add('fade-out');
+        setTimeout(function() { overlay.style.display = 'none'; }, 600);
+    }, 800);
+});
+
+// ====== 弹出式键盘逻辑 ======
 var exprValue = '';
+var kbOpen = false;
+
 function updateDisplay() {
     var box = document.getElementById('display');
-    box.textContent = exprValue || ' ';
+    if (kbOpen) {
+        box.innerHTML = (exprValue || '') + '<span class="cursor-blink"></span>';
+        box.classList.add('active');
+    } else {
+        box.textContent = exprValue || '点击输入';
+        box.classList.remove('active');
+    }
     document.getElementById('expr').value = exprValue;
 }
+
+function openKb() {
+    kbOpen = true;
+    document.getElementById('kbOverlay').classList.add('open');
+    updateDisplay();
+}
+
+function closeKb() {
+    kbOpen = false;
+    document.getElementById('kbOverlay').classList.remove('open');
+    updateDisplay();
+}
+
 updateDisplay();
 
+// 点输入框弹出键盘
+document.getElementById('display').addEventListener('click', function() {
+    if (!kbOpen) openKb();
+});
+
+// 点背景关闭键盘
+document.getElementById('kbBg').addEventListener('click', closeKb);
+
+// 键盘按钮
 document.getElementById('numpad').addEventListener('click', function(e) {
     var btn = e.target.closest('.nk');
     if (!btn) return;
     var val = btn.dataset.val;
+    if (val === 'done') {
+        closeKb();
+        return;
+    }
     if (val === 'clear') {
         exprValue = '';
     } else if (val === 'del') {
         exprValue = exprValue.slice(0, -1);
     } else if (val === '+' || val === '-') {
-        // 只允许一个运算符，且不能在开头
         if (exprValue.length > 0 && !/[+\-]/.test(exprValue)) {
             exprValue += val;
         }
     } else {
-        // 数字：限制每个数最多 2 位
         var parts = exprValue.split(/([+\-])/);
         var lastPart = parts[parts.length - 1];
         if (lastPart.length < 2) {
