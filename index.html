@@ -543,7 +543,7 @@ async function runDemo() {
 
     } else {
         // 减法
-        var a0 = tensOnes(a);
+        var tensB = Math.floor(b / 10), onesB = b % 10;
 
         // 拨出被减数
         await Promise.all([
@@ -553,12 +553,26 @@ async function runDemo() {
         await sayAndSpeak(a + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
         await sleep(800);
 
-        // 拨回减数
-        await Promise.all([
-            sayAndSpeak('减去 <span class="hl">' + b + '</span>，拨回 ' + b + ' 颗珠子', 1500),
-            animatePushBack(b, 180)
-        ]);
+        // 拨回减数 — 先拨十位，再拨个位
+        await sayAndSpeak('现在要减去 <span class="hl">' + b + '</span>', 1500);
+        await sayAndSpeak(b + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
         await sleep(600);
+
+        if (tensB > 0) {
+            await Promise.all([
+                sayAndSpeak('先拨回十位，<span class="hl">' + tensB + ' 个十</span>，就是 ' + (tensB * 10) + ' 颗珠子', 1800),
+                animatePushBack(tensB * 10, 200)
+            ]);
+            await sleep(500);
+        }
+
+        if (onesB > 0) {
+            await Promise.all([
+                sayAndSpeak('再拨回个位，<span class="hl">' + onesB + ' 个一</span>，就是 ' + onesB + ' 颗珠子', 1800),
+                animatePushBack(onesB, 200)
+            ]);
+            await sleep(500);
+        }
 
         // 最后提问
         await sayAndSpeak('现在算盘上还剩<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？数一数吧！', 3000);
