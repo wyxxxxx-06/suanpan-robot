@@ -376,21 +376,73 @@ async function runDemo() {
     await sleep(300);
 
     if (op === '+') {
-        // 第一个数：从第 0 行开始拨
-        await Promise.all([
-            sayAndSpeak('先拨出第一个数 <span class="hl">' + a + '</span>', 1500),
-            animatePushRight(0, a, 200)
-        ]);
-        await sayAndSpeak(a + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
-        await sleep(800);
+        var tensA = Math.floor(a / 10), onesA = a % 10;
+        var tensB = Math.floor(b / 10), onesB = b % 10;
+        var rowsA = a === 0 ? 0 : Math.ceil(a / 10);   // A 占几行
+        var rowsB = b === 0 ? 0 : Math.ceil(b / 10);   // B 占几行
+        var canSeparate = (rowsA + rowsB <= ROWS);      // 行数够不够完全分开
 
-        // 第二个数：从当前位置继续拨（个位自然合在一起）
-        await Promise.all([
-            sayAndSpeak('再拨出第二个数 <span class="hl">' + b + '</span>', 1500),
-            animatePushRight(0, b, 200)
-        ]);
-        await sayAndSpeak(b + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
-        await sleep(800);
+        if (canSeparate) {
+            // ===== 行数够：两个数完全分开拨 =====
+            // 显示分隔线
+            if (rowsA > 0 && rowsA < ROWS) {
+                var div = document.getElementById('divider-' + rowsA);
+                if (div) div.classList.add('visible');
+            }
+            // 第一个数
+            await Promise.all([
+                sayAndSpeak('先拨出第一个数 <span class="hl">' + a + '</span>', 1500),
+                animatePushRight(0, a, 200)
+            ]);
+            await sayAndSpeak(a + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
+            await sleep(800);
+            // 第二个数：从 rowsA 行开始（完全分开）
+            await Promise.all([
+                sayAndSpeak('再拨出第二个数 <span class="hl">' + b + '</span>', 1500),
+                animatePushRight(rowsA, b, 200)
+            ]);
+            await sayAndSpeak(b + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
+            await sleep(800);
+        } else {
+            // ===== 行数不够：十位分开拨，个位合在一起 =====
+            // A 的个位行 = tensA（第 tensA 行放 A 的个位）
+            // B 的十位从 tensA + 1 行开始
+            // B 的个位也放到第 tensA 行（和 A 的个位合在一起）
+            var onesRow = tensA;  // A 的个位所在行
+            var bTensStart = tensA + (onesA > 0 ? 1 : 0);  // B 的十位起始行
+
+            // 显示分隔线（A 的部分和 B 的十位之间）
+            if (bTensStart > 0 && bTensStart < ROWS) {
+                var div = document.getElementById('divider-' + bTensStart);
+                if (div) div.classList.add('visible');
+            }
+
+            // 第一个数
+            await Promise.all([
+                sayAndSpeak('先拨出第一个数 <span class="hl">' + a + '</span>', 1500),
+                animatePushRight(0, a, 200)
+            ]);
+            await sayAndSpeak(a + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
+            await sleep(800);
+
+            // 第二个数：先拨十位（分开的行），再拨个位（合在 A 的个位行）
+            if (tensB > 0) {
+                await Promise.all([
+                    sayAndSpeak('再拨 ' + b + ' 的十位，<span class="hl">' + tensB + ' 个十</span>', 1500),
+                    animatePushRight(bTensStart, tensB * 10, 200)
+                ]);
+                await sleep(400);
+            }
+            if (onesB > 0) {
+                await Promise.all([
+                    sayAndSpeak('再把 ' + b + ' 的个位 <span class="hl">' + onesB + '</span> 和前面的个位放在一起', 1500),
+                    animatePushRight(onesRow, onesB, 200)
+                ]);
+                await sleep(400);
+            }
+            await sayAndSpeak(b + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
+            await sleep(800);
+        }
 
         // 最后提问
         await sayAndSpeak('现在算盘上一共有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？数一数吧！', 3000);
