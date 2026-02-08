@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>小学算数机器人 - 算盘演示</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+            background: linear-gradient(135deg, #f5f0e8 0%, #e8dfd0 100%);
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { color: #5c4a3a; margin-bottom: 8px; font-size: 1.5rem; }
+        .sub { color: #8b7355; font-size: 0.9rem; margin-bottom: 20px; }
+        .input-row {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
+        }
+        .input-row input {
+            width: 160px; padding: 12px 16px; font-size: 1.2rem;
+            border: 2px solid #c4a574; border-radius: 12px; text-align: center;
+        }
+        .input-row input:focus {
+            outline: none; border-color: #8b6914;
+            box-shadow: 0 0 0 3px rgba(139,105,20,0.2);
+        }
+        .btn {
+            padding: 12px 24px; font-size: 1rem; border: none; border-radius: 12px;
+            background: #8b6914; color: #fff; cursor: pointer; font-weight: bold;
+        }
+        .btn:hover { background: #6d5210; }
+        .btn:disabled { background: #aaa; cursor: not-allowed; }
+
+        /* ====== 算盘 ====== */
+        .abacus-wrap {
+            background: linear-gradient(165deg, #e8d5b5 0%, #d4bc8c 50%, #c9a95c 100%);
+            padding: 18px 22px;
+            border-radius: 14px;
+            border: 4px solid #a08050;
+            box-shadow: inset 0 2px 0 rgba(255,255,255,0.5), 0 8px 24px rgba(0,0,0,0.15);
+            overflow-x: auto;
+            max-width: 100%;
+        }
+        .abacus { display: flex; flex-direction: column; gap: 6px; }
+        .abacus-row {
+            position: relative;
+            height: 38px;
+        }
+        /* 横杆 */
+        .rod {
+            position: absolute; left: 0; right: 0;
+            height: 8px; top: 50%; margin-top: -4px;
+            background: linear-gradient(180deg, #a08060 0%, #6b4e30 50%, #a08060 100%);
+            border-radius: 4px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 1px 2px rgba(0,0,0,0.15);
+        }
+        /* 珠子 */
+        .bead {
+            position: absolute;
+            top: 50%; transform: translateY(-50%);
+            border-radius: 50%;
+            border: 2px solid rgba(0,0,0,0.2);
+            box-shadow: inset -2px -2px 4px rgba(0,0,0,0.2), 2px 2px 4px rgba(255,255,255,0.4);
+            transition: left 0.28s ease;
+            z-index: 1;
+        }
+        .bead.flash { animation: bump 0.3s ease; }
+        @keyframes bump {
+            0%,100% { transform: translateY(-50%) scale(1); }
+            50%     { transform: translateY(-50%) scale(1.18); }
+        }
+        .bead.c-red    { background: radial-gradient(circle at 35% 35%, #ff7b7b, #d32f2f); }
+        .bead.c-blue   { background: radial-gradient(circle at 35% 35%, #64b5f6, #1976d2); }
+        .bead.c-orange { background: radial-gradient(circle at 35% 35%, #ffb74d, #e65100); }
+        .bead.c-green  { background: radial-gradient(circle at 35% 35%, #81c784, #2e7d32); }
+        .bead.c-yellow { background: radial-gradient(circle at 35% 35%, #fff176, #f9a825); }
+
+        /* 分隔线 */
+        .abacus-divider {
+            height: 2px;
+            background: rgba(0,0,0,0.15);
+            margin: 4px 0;
+            border-radius: 1px;
+            display: none;
+        }
+        .abacus-divider.visible { display: block; }
+
+        /* 说明框 */
+        .explain {
+            margin-top: 24px; width: 100%; max-width: 460px;
+            min-height: 80px; padding: 16px 20px;
+            background: #fffef9; border: 2px solid #c4a574;
+            border-radius: 12px; font-size: 1rem; line-height: 1.8; color: #4a3728;
+        }
+        .explain .line { margin-bottom: 4px; }
+        .explain .hl { color: #8b6914; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🧮 小学算数机器人</h1>
+    <p class="sub">100 以内加减，用算盘拨珠看过程</p>
+
+    <div class="input-row">
+        <input type="text" id="expr" placeholder="例如：24+14" autocomplete="off">
+        <button class="btn" id="go">拨珠演示</button>
+    </div>
+
+    <div class="abacus-wrap">
+        <div class="abacus" id="abacus"></div>
+    </div>
+
+    <div class="explain" id="explain">
+        输入算式后点击「拨珠演示」，算盘会一颗颗拨给你看哦！
+    </div>
+
+<script>
+const ROWS = 10, COLS = 10;
+const ROW_COLORS = ['c-red','c-red','c-blue','c-blue','c-orange','c-orange','c-green','c-green','c-yellow','c-yellow'];
+
+let rowStates = new Array(ROWS).fill(0);   // 每行已拨到右边的珠子数
+let SLOT = 24;   // 一颗珠子占位宽度（px）
+let BEAD = 20;   // 珠子直径（px）
+let ROW_W = 0;   // 行总宽（px）
+
+/* ---- 布局计算 ---- */
+function calcLayout() {
+    // 22 格 = 左 10 + 中间 2 格空隙 + 右 10
+    var maxW = Math.min(window.innerWidth - 60, 560);
+    SLOT = Math.max(16, Math.floor(maxW / 22));
+    BEAD = Math.max(13, SLOT - 4);
+    ROW_W = SLOT * 22;
+}
+
+/* ---- 构建算盘 DOM ---- */
+function buildAbacus() {
+    calcLayout();
+    var wrap = document.getElementById('abacus');
+    wrap.innerHTML = '';
+    for (var r = 0; r < ROWS; r++) {
+        // 分隔线（默认隐藏，演示时按需显示）
+        if (r > 0) {
+            var divider = document.createElement('div');
+            divider.className = 'abacus-divider';
+            divider.id = 'divider-' + r;
+            wrap.appendChild(divider);
+        }
+        var rowEl = document.createElement('div');
+        rowEl.className = 'abacus-row';
+        rowEl.dataset.row = String(r);
+        rowEl.style.width = ROW_W + 'px';
+
+        var rod = document.createElement('div');
+        rod.className = 'rod';
+        rowEl.appendChild(rod);
+
+        for (var c = 0; c < COLS; c++) {
+            var bead = document.createElement('div');
+            bead.className = 'bead ' + ROW_COLORS[r];
+            bead.dataset.row = String(r);
+            bead.dataset.col = String(c);
+            bead.style.width = BEAD + 'px';
+            bead.style.height = BEAD + 'px';
+            rowEl.appendChild(bead);
+        }
+        wrap.appendChild(rowEl);
+    }
+    resetAbacus();
+}
+
+/* ---- 渲染单行珠子位置 ---- */
+function renderRow(r) {
+    var on = rowStates[r];
+    var rowEl = document.querySelector('.abacus-row[data-row="' + r + '"]');
+    if (!rowEl) return;
+    var beads = rowEl.querySelectorAll('.bead');
+    beads.forEach(function(b) {
+        var c = parseInt(b.dataset.col);
+        var left;
+        if (c < (10 - on)) {
+            // 留在左边
+            left = c * SLOT;
+        } else {
+            // 拨到右边（靠右对齐）
+            left = (12 + c) * SLOT;
+        }
+        b.style.left = left + 'px';
+    });
+}
+
+/* ---- 重置算盘 ---- */
+function resetAbacus() {
+    rowStates = new Array(ROWS).fill(0);
+    for (var r = 0; r < ROWS; r++) renderRow(r);
+    // 隐藏所有分隔线
+    for (var i = 1; i < ROWS; i++) {
+        var d = document.getElementById('divider-' + i);
+        if (d) d.classList.remove('visible');
+    }
+}
+
+/* ---- 拨珠音效 ---- */
+var audioCtx = null;
+function playTick() {
+    try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        var o = audioCtx.createOscillator();
+        var g = audioCtx.createGain();
+        o.connect(g); g.connect(audioCtx.destination);
+        o.frequency.value = 800; o.type = 'sine';
+        g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.03);
+        o.start(audioCtx.currentTime);
+        o.stop(audioCtx.currentTime + 0.03);
+    } catch(e) {}
+}
+
+/* ---- 语音朗读（边拨边读） ---- */
+function speakAndWait(text, minMs) {
+    var plain = (text || '').replace(/<[^>]+>/g, '').trim();
+    minMs = minMs || 1200;
+    return new Promise(function(resolve) {
+        if (!window.speechSynthesis || !plain) {
+            setTimeout(resolve, minMs);
+            return;
+        }
+        try {
+            var u = new SpeechSynthesisUtterance(plain);
+            u.lang = 'zh-CN';
+            u.rate = 1.0;
+            u.pitch = 1.15;
+            u.volume = 1.0;
+            // 优先选自然的女声（Xiaoxiao / Yaoyao / Huihui 等微软中文语音更自然）
+            var vs = speechSynthesis.getVoices();
+            var pick = null;
+            // 优先级：Microsoft 在线神经语音 > Google 中文 > 任何中文
+            var prefer = ['xiaoxiao', 'yaoyao', 'yunxi', 'xiaoyi', 'huihui', 'kangkang', 'google'];
+            for (var p = 0; p < prefer.length && !pick; p++) {
+                pick = vs.find(function(v) {
+                    return v.lang.indexOf('zh') >= 0 && v.name.toLowerCase().indexOf(prefer[p]) >= 0;
+                });
+            }
+            if (!pick) pick = vs.find(function(v) { return v.lang.indexOf('zh') >= 0; });
+            if (pick) u.voice = pick;
+            var done = false;
+            function finish() { if (!done) { done = true; resolve(); } }
+            u.onend = finish;
+            u.onerror = finish;
+            // 安全超时：防止 onend 不触发
+            setTimeout(finish, Math.max(minMs, plain.length * 280 + 800));
+            speechSynthesis.speak(u);
+        } catch(e) {
+            setTimeout(resolve, minMs);
+        }
+    });
+}
+
+/* ---- 显示 + 朗读（边显示文字边读出来） ---- */
+function sayAndSpeak(html, minMs) {
+    var el = document.getElementById('explain');
+    var line = document.createElement('div');
+    line.className = 'line';
+    line.innerHTML = html;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+    return speakAndWait(html, minMs);
+}
+
+function clearSay() {
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    document.getElementById('explain').innerHTML = '';
+}
+
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+/* ---- 动画：往右拨 count 颗珠子，从 startRow 行开始 ---- */
+/* 整十（满行）快速刷过去，零头慢慢拨 */
+async function animatePushRight(startRow, count, slowDelay) {
+    slowDelay = slowDelay || 200;
+    var fastDelay = 30;   // 整行快速拨
+    var remaining = count;
+    var row = startRow;
+    while (remaining > 0 && row < ROWS) {
+        var canPush = COLS - rowStates[row];
+        var toPush = Math.min(canPush, remaining);
+        // 如果要把整行 10 颗全推满，用快速模式
+        var isFullRow = (toPush === 10 && rowStates[row] === 0);
+        var d = isFullRow ? fastDelay : slowDelay;
+        for (var i = 0; i < toPush; i++) {
+            rowStates[row]++;
+            renderRow(row);
+            var movedCol = COLS - rowStates[row];
+            var bead = document.querySelector('.bead[data-row="' + row + '"][data-col="' + movedCol + '"]');
+            if (bead) {
+                bead.classList.add('flash');
+                setTimeout(function(b) { b.classList.remove('flash'); }, 300, bead);
+            }
+            playTick();
+            await sleep(d);
+        }
+        remaining -= toPush;
+        row++;
+    }
+}
+
+/* ---- 动画：往左拨回 count 颗珠子（从最后有珠子的行开始往回拨） ---- */
+async function animatePushBack(count, slowDelay) {
+    slowDelay = slowDelay || 200;
+    var fastDelay = 30;
+    var remaining = count;
+    for (var row = ROWS - 1; row >= 0 && remaining > 0; row--) {
+        var current = rowStates[row];
+        if (current === 0) continue;
+        var toReturn = Math.min(current, remaining);
+        // 如果要把整行 10 颗全拨回，快速模式
+        var isFullRow = (toReturn === 10 && current === 10);
+        var d = isFullRow ? fastDelay : slowDelay;
+        for (var i = 0; i < toReturn; i++) {
+            var movedCol = COLS - rowStates[row];
+            rowStates[row]--;
+            renderRow(row);
+            var bead = document.querySelector('.bead[data-row="' + row + '"][data-col="' + movedCol + '"]');
+            if (bead) {
+                bead.classList.add('flash');
+                setTimeout(function(b) { b.classList.remove('flash'); }, 300, bead);
+            }
+            playTick();
+            await sleep(d);
+        }
+        remaining -= toReturn;
+    }
+}
+
+/* ---- 解析算式 ---- */
+function parseExpr(str) {
+    str = (str || '').trim().replace(/\s+/g, '').replace(/＋/g, '+').replace(/－/g, '-');
+    var m = str.match(/^(\d+)([+\-])(\d+)$/);
+    if (!m) return null;
+    return { a: parseInt(m[1]), op: m[2], b: parseInt(m[3]) };
+}
+
+function tensOnes(n) {
+    n = Math.max(0, Math.min(99, n));
+    return { t: Math.floor(n / 10), o: n % 10 };
+}
+
+/* ---- 主演示逻辑 ---- */
+async function runDemo() {
+    var input = document.getElementById('expr').value;
+    var parsed = parseExpr(input);
+    var goBtn = document.getElementById('go');
+
+    if (!parsed) {
+        clearSay();
+        sayAndSpeak('请输入 100 以内的加减算式，例如 <span class="hl">24+14</span> 或 <span class="hl">50-17</span>');
+        return;
+    }
+    var a = parsed.a, b = parsed.b, op = parsed.op;
+    if (a < 0 || a > 99 || b < 0 || b > 99) {
+        clearSay(); sayAndSpeak('请使用 0 到 99 之间的数哦。'); return;
+    }
+    if (op === '+' && a + b > 99) {
+        clearSay(); sayAndSpeak('两个数加起来超过 99 了，算盘放不下哦。'); return;
+    }
+    if (op === '-' && a < b) {
+        clearSay(); sayAndSpeak('被减数比减数小，算盘没法减到负数哦。'); return;
+    }
+
+    goBtn.disabled = true;
+    clearSay();
+    resetAbacus();
+    await sleep(300);
+
+    if (op === '+') {
+        // 第一个数：从第 0 行开始拨
+        await Promise.all([
+            sayAndSpeak('先拨出第一个数 <span class="hl">' + a + '</span>', 1500),
+            animatePushRight(0, a, 200)
+        ]);
+        await sayAndSpeak(a + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
+        await sleep(800);
+
+        // 第二个数：从当前位置继续拨（个位自然合在一起）
+        await Promise.all([
+            sayAndSpeak('再拨出第二个数 <span class="hl">' + b + '</span>', 1500),
+            animatePushRight(0, b, 200)
+        ]);
+        await sayAndSpeak(b + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
+        await sleep(800);
+
+        // 最后提问
+        await sayAndSpeak('现在算盘上一共有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？数一数吧！', 3000);
+        await sleep(800);
+        await sayAndSpeak('所以，<span class="hl">' + a + ' + ' + b + '</span> 等于多少呢？', 2500);
+
+    } else {
+        // 减法
+        var a0 = tensOnes(a);
+
+        // 拨出被减数
+        await Promise.all([
+            sayAndSpeak('先拨出 <span class="hl">' + a + '</span>', 1500),
+            animatePushRight(0, a, 200)
+        ]);
+        await sayAndSpeak(a + ' 里面有<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？', 2200);
+        await sleep(800);
+
+        // 拨回减数
+        await Promise.all([
+            sayAndSpeak('减去 <span class="hl">' + b + '</span>，拨回 ' + b + ' 颗珠子', 1500),
+            animatePushBack(b, 180)
+        ]);
+        await sleep(600);
+
+        // 最后提问
+        await sayAndSpeak('现在算盘上还剩<span class="hl">几个十</span>，<span class="hl">几个一</span>呢？数一数吧！', 3000);
+        await sleep(800);
+        await sayAndSpeak('所以，<span class="hl">' + a + ' - ' + b + '</span> 等于多少呢？', 2500);
+    }
+
+    goBtn.disabled = false;
+}
+
+/* ---- 初始化 ---- */
+// 预加载语音
+if (window.speechSynthesis) {
+    speechSynthesis.getVoices();
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+        speechSynthesis.onvoiceschanged = function() { speechSynthesis.getVoices(); };
+    }
+}
+
+buildAbacus();
+window.addEventListener('resize', function() {
+    calcLayout();
+    var rows = document.querySelectorAll('.abacus-row');
+    rows.forEach(function(rowEl) {
+        rowEl.style.width = ROW_W + 'px';
+        var beads = rowEl.querySelectorAll('.bead');
+        beads.forEach(function(b) { b.style.width = BEAD + 'px'; b.style.height = BEAD + 'px'; });
+    });
+    for (var r = 0; r < ROWS; r++) renderRow(r);
+});
+
+document.getElementById('go').addEventListener('click', runDemo);
+document.getElementById('expr').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') runDemo();
+});
+</script>
+</body>
+</html>
